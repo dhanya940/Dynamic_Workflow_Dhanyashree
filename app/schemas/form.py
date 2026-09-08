@@ -1,5 +1,6 @@
 """Pydantic schemas for Tasks 4-6 and the supporting submission/rule flow."""
 import uuid
+from uuid import UUID
 from datetime import datetime
 from typing import Any
 from pydantic import BaseModel, Field as PydanticField, ConfigDict
@@ -80,11 +81,18 @@ class FormListItem(BaseModel):
     updated_at: datetime
 
 class ConditionalRuleCreate(BaseModel):
-    trigger_field_id: uuid.UUID
+    trigger_field_id: UUID
     operator: str
-    comparison_value: str
-    target_field_id: uuid.UUID
+    comparison_value: str = ""
+    target_field_id: UUID
     action: str = "show"
+
+
+class ConditionalRuleUpdate(BaseModel):
+    operator: str | None = None
+    comparison_value: str | None = None
+    target_field_id: UUID | None = None
+    action: str | None = None
 
 class ConditionalRuleOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)

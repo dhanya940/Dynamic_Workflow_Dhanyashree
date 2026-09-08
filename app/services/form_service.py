@@ -14,6 +14,7 @@ from app.models.conditional_rule import ConditionalRule
 from app.models.submission import Submission
 from app.models.response_value import ResponseValue
 from app.models.form_share_link import FormShareLink
+from app.services.validation_service import validate_submission
 from app.schemas.form import (
     FormCreate, FormUpdate, FieldCreate, FieldUpdate, ReorderFieldsRequest,
     ConditionalRuleCreate, SubmissionCreate,
@@ -203,6 +204,14 @@ def add_rule(db: Session, form_id: uuid.UUID, rule_in: ConditionalRuleCreate, us
     trigger = db.query(Field).filter(Field.id == rule_in.trigger_field_id, Field.form_version_id == draft.id).first()
     target = db.query(Field).filter(Field.id == rule_in.target_field_id, Field.form_version_id == draft.id).first()
     if not trigger or not target: raise HTTPException(status_code=400, detail="Trigger and target must be fields in the current draft")
+    if trigger.id == target.id:
+        raise HTTPException(status_code=400, detail="Trigger and target fields cannot be the same")
+    allowed_operators = {"equals", "not_equals", "contains", "greater_than", "is_empty"}
+    if rule_in.operator not in allowed_operators:
+        raise HTTPException(status_code=400, detail="Invalid operator")
+    allowed_actions = {"show", "hide", "require"}
+    if rule_in.action not in allowed_actions:
+        raise HTTPException(status_code=400, detail="Invalid action")
     rule = ConditionalRule(trigger_field_id=trigger.id, target_field_id=target.id, operator=rule_in.operator,
                            comparison_value=rule_in.comparison_value, action=rule_in.action)
     db.add(rule); form.status="draft"; form.updated_at=datetime.utcnow()
@@ -260,30 +269,78 @@ def get_public_form(db: Session, slug: str) -> FormVersion:
     if not v.is_active: raise HTTPException(status_code=410, detail="This link points to an outdated version")
     return v
 
-def submit_public_form(db: Session, slug: str, data: SubmissionCreate) -> Submission:
-    version=get_public_form(db, slug)
-    fields={str(f.id): f for f in version.fields}
-    # Enforce required fields and ignore unknown/admin data.
-    for fid, field in fields.items():
-        value=data.values.get(fid)
-        if field.is_required and (value is None or value == "" or value == []):
-            raise HTTPException(status_code=422, detail=f"{field.label} is required")
-        if value is not None:
-            if field.field_type == "email" and "@" not in str(value):
-                raise HTTPException(status_code=422, detail=f"Invalid email for {field.label}")
-            cfg=field.validation_config or {}
-            if isinstance(value, (int,float)) and cfg.get("min") is not None and value < cfg["min"]:
-                raise HTTPException(status_code=422, detail=f"{field.label} is below the minimum")
-            if isinstance(value, (int,float)) and cfg.get("max") is not None and value > cfg["max"]:
-                raise HTTPException(status_code=422, detail=f"{field.label} is above the maximum")
-    submission=Submission(form_version_id=version.id, completion_time_seconds=data.completion_time_seconds)
-    db.add(submission); db.flush()
-    for fid, value in data.values.items():
-        if fid not in fields: continue
-        db.add(ResponseValue(submission_id=submission.id, field_id=fields[fid].id,
-                              value=json_value(value)))
-    db.commit(); db.refresh(submission); return submission
+def submit_public_form(db: Session, slug: str, data):
 
+    version = get_public_form(db, slug)
+
+    fields = sorted(
+        version.fields,
+        key=lambda field: field.display_order
+    )
+
+    field_ids = [field.id for field in fields]
+
+    rules = []
+
+    if field_ids:
+
+        rules = db.query(ConditionalRule).filter(
+            ConditionalRule.trigger_field_id.in_(field_ids),
+            ConditionalRule.target_field_id.in_(field_ids)
+        ).all()
+
+    errors = validate_submission(
+        fields,
+        rules,
+        data.values
+    )
+
+    if errors:
+
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Validation failed",
+                "errors": errors
+            }
+        )
+
+    # Create submission
+    submission = Submission(
+        form_version_id=version.id,
+        completion_time_seconds=data.completion_time_seconds
+    )
+
+    db.add(submission)
+
+    db.flush()
+
+    # Save responses
+    for field_id, value in data.values.items():
+
+        field = next(
+            (
+                f for f in fields
+                if str(f.id) == str(field_id)
+            ),
+            None
+        )
+
+        if field:
+
+            response = ResponseValue(
+                submission_id=submission.id,
+                field_id=field.id,
+                value=str(value)
+            )
+
+            db.add(response)
+
+    db.commit()
+
+    db.refresh(submission)
+
+    return submission
 def json_value(value):
     import json
     return json.dumps(value) if isinstance(value,(dict,list)) else str(value)

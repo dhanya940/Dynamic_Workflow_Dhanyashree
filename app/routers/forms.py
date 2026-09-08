@@ -1,6 +1,6 @@
 """Task 4: Form Management; Task 5: Versioning/Publishing; Task 6: Shareable Access."""
 import uuid
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
@@ -8,7 +8,7 @@ from app.routers.auth import get_current_user
 from app.schemas.form import (
     FormCreate, FormUpdate, FormOut, FormDetailOut, FormListItem,
     FieldCreate, FieldUpdate, FieldOut, ReorderFieldsRequest,
-    ConditionalRuleCreate, ConditionalRuleOut,
+    ConditionalRuleCreate, ConditionalRuleUpdate, ConditionalRuleOut,
     FormVersionOut, FormVersionDetailOut, ShareLinkOut, PublicFormOut,
     SubmissionCreate, SubmissionOut,
 )
@@ -110,3 +110,22 @@ def public_form(slug:str,db:Session=Depends(get_db)):
 def submit(slug:str,body:SubmissionCreate,db:Session=Depends(get_db)):
     s=form_service.submit_public_form(db,slug,body)
     return SubmissionOut(response_id=s.response_id,submitted_at=s.submitted_at,message="Response submitted successfully")
+
+@forms_router.put("/rules/{rule_id}",response_model=ConditionalRuleOut)
+def update_rule(rule_id:uuid.UUID,body:ConditionalRuleUpdate,db:Session=Depends(get_db),current_user=Depends(get_current_user)):
+    from app.models.conditional_rule import ConditionalRule
+    rule=db.query(ConditionalRule).join(Field,ConditionalRule.trigger_field_id==Field.id).join(FormVersion,Field.form_version_id==FormVersion.id).join(Form,FormVersion.form_id==Form.id).filter(ConditionalRule.id==rule_id,Form.created_by==current_user.id).first()
+    if not rule:
+        raise HTTPException(status_code=404,detail="Rule not found")
+    if rule.trigger_field.form_version.is_active:
+        raise HTTPException(status_code=400,detail="Published versions are immutable")
+    if body.operator is not None:
+        rule.operator=body.operator
+    if body.comparison_value is not None:
+        rule.comparison_value=body.comparison_value
+    if body.target_field_id is not None:
+        rule.target_field_id=body.target_field_id
+    if body.action is not None:
+        rule.action=body.action
+    db.commit();db.refresh(rule)
+    return rule

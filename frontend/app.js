@@ -63,3 +63,146 @@ function applyRules(){let rs=publicData.rules||[];rs.forEach(r=>{let trigger=doc
 
 async function route(){if(location.pathname.startsWith("/form/"))return publicPage(location.pathname.split("/")[2]);let p=location.hash.slice(1)||"home";if(p.startsWith("form/"))return publicPage(p.split("/")[1]);let [r,a,b]=p.split("/");if(r==="signup")return signup();if(r==="signin")return signin();if(r==="home")return home();if(r==="forms")return forms();if(r==="create")return createForm();if(r==="builder")return builder(a);if(r==="versions")return versions(a);if(r==="version")return versionDetail(a,b);return token()?home():signin()}
 window.addEventListener("hashchange",route);route();
+function applyConditionalRules(form, rules) {
+
+    function getValue(fieldId) {
+
+        const elements =
+            document.querySelectorAll(
+                `[data-field="${fieldId}"]`
+            );
+
+        if (!elements.length) {
+            return "";
+        }
+
+        if (elements[0].type === "checkbox") {
+
+            return [...elements]
+                .filter(x => x.checked)
+                .map(x => x.value);
+        }
+
+        return elements[0].value;
+    }
+
+
+    function compare(value, operator, expected) {
+
+        if (operator === "equals") {
+
+            if (Array.isArray(value)) {
+                return value.includes(expected);
+            }
+
+            return String(value) === String(expected);
+        }
+
+
+        if (operator === "not_equals") {
+
+            return String(value) !== String(expected);
+        }
+
+
+        if (operator === "contains") {
+
+            return String(value)
+                .toLowerCase()
+                .includes(
+                    String(expected).toLowerCase()
+                );
+        }
+
+
+        if (operator === "greater_than") {
+
+            return Number(value) > Number(expected);
+        }
+
+
+        if (operator === "is_empty") {
+
+            return (
+                value === "" ||
+                value === null ||
+                value === undefined
+            );
+        }
+
+        return false;
+    }
+
+
+    function refresh() {
+
+        rules.forEach(rule => {
+
+            const target =
+                document.querySelector(
+                    `[data-wrap="${rule.target_field_id}"]`
+                );
+
+            if (!target) {
+                return;
+            }
+
+            const value =
+                getValue(rule.trigger_field_id);
+
+            const condition =
+                compare(
+                    value,
+                    rule.operator,
+                    rule.comparison_value
+                );
+
+
+            if (rule.action === "show") {
+
+                target.style.display =
+                    condition ? "" : "none";
+            }
+
+
+            if (rule.action === "hide") {
+
+                target.style.display =
+                    condition ? "none" : "";
+            }
+
+
+            if (rule.action === "require") {
+
+                const input =
+                    target.querySelector(
+                        "[data-field]"
+                    );
+
+                if (input) {
+                    input.required = condition;
+                }
+            }
+
+        });
+    }
+
+
+    document
+        .querySelectorAll("[data-field]")
+        .forEach(input => {
+
+            input.addEventListener(
+                "change",
+                refresh
+            );
+
+            input.addEventListener(
+                "input",
+                refresh
+            );
+        });
+
+
+    refresh();
+}

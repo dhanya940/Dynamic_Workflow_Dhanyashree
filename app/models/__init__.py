@@ -11,3 +11,4 @@ from app.models.conditional_rule import ConditionalRule  # noqa: F401
 from app.models.submission import Submission     # noqa: F401
 from app.models.response_value import ResponseValue  # noqa: F401
 from app.models.form_share_link import FormShareLink  # noqa: F401
+from app.models.uploaded_file import UploadedFile  # noqa: F401

@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.database.session import engine
 from app.routers import auth
 from app.routers.forms import forms_router, fields_router, public_router
+from app.routers.files import router as files_router
 
 FRONTEND = Path(__file__).resolve().parent.parent / "frontend"
 
@@ -27,6 +28,7 @@ app.include_router(auth.router)
 app.include_router(forms_router)
 app.include_router(fields_router)
 app.include_router(public_router)
+app.include_router(files_router)
 
 @app.get("/")
 def root():
