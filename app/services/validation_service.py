@@ -189,6 +189,18 @@ def validate_field(field, value):
                 f"{minimum} and {maximum}"
             )
 
+    # FILE
+    elif field_type == "file":
+
+        # File validation is handled during upload
+        # Here we just check if a file ID was provided (UUID format)
+        if value and not is_empty(value):
+            # Check if it looks like a UUID (file ID)
+            import re
+            uuid_pattern = r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+            if not re.match(uuid_pattern, str(value), re.IGNORECASE):
+                return f"{field.label} must be a valid file reference"
+
     return None
 
 

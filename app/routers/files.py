@@ -20,8 +20,7 @@ router = APIRouter(prefix="/files", tags=["files"])
 @router.post("/upload", response_model=FileUploadOut, status_code=status.HTTP_201_CREATED)
 def upload_file_endpoint(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """Upload a file (PDF, DOC, DOCX, JPG, PNG) with max size 5MB."""
     return upload_file(db, file)

@@ -133,3 +133,19 @@ class SubmissionOut(BaseModel):
     response_id: uuid.UUID
     submitted_at: datetime
     message: str
+
+class SubmissionListItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    response_id: uuid.UUID
+    submitted_at: datetime
+    completion_time_seconds: int | None
+
+class SubmissionDetailOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    response_id: uuid.UUID
+    submitted_at: datetime
+    completion_time_seconds: int | None
+    form_version_id: uuid.UUID
+    values: list[Any]

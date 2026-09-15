@@ -10,7 +10,7 @@ from app.schemas.form import (
     FieldCreate, FieldUpdate, FieldOut, ReorderFieldsRequest,
     ConditionalRuleCreate, ConditionalRuleUpdate, ConditionalRuleOut,
     FormVersionOut, FormVersionDetailOut, ShareLinkOut, PublicFormOut,
-    SubmissionCreate, SubmissionOut,
+    SubmissionCreate, SubmissionOut, SubmissionListItem, SubmissionDetailOut,
 )
 from app.services import form_service
 
@@ -129,3 +129,30 @@ def update_rule(rule_id:uuid.UUID,body:ConditionalRuleUpdate,db:Session=Depends(
         rule.action=body.action
     db.commit();db.refresh(rule)
     return rule
+
+@forms_router.get("/{form_id}/submissions",response_model=list[SubmissionListItem])
+def list_submissions(form_id:uuid.UUID,db:Session=Depends(get_db),current_user=Depends(get_current_user)):
+    from app.models.submission import Submission
+    from app.models.form_version import FormVersion
+    form=form_service.get_form_or_404(db,form_id,current_user.id)
+    version_ids=[v.id for v in db.query(FormVersion).filter(FormVersion.form_id==form.id).all()]
+    return db.query(Submission).filter(Submission.form_version_id.in_(version_ids)).order_by(Submission.submitted_at.desc()).all()
+
+@forms_router.get("/{form_id}/submissions/{submission_id}",response_model=SubmissionDetailOut)
+def get_submission(form_id:uuid.UUID,submission_id:uuid.UUID,db:Session=Depends(get_db),current_user=Depends(get_current_user)):
+    from app.models.submission import Submission
+    from app.models.response_value import ResponseValue
+    from app.models.field import Field
+    form=form_service.get_form_or_404(db,form_id,current_user.id)
+    submission=db.query(Submission).filter(Submission.id==submission_id).first()
+    if not submission:
+        raise HTTPException(status_code=404,detail="Submission not found")
+    values=db.query(ResponseValue).join(Field,ResponseValue.field_id==Field.id).filter(ResponseValue.submission_id==submission_id).all()
+    return SubmissionDetailOut(
+        id=submission.id,
+        response_id=submission.response_id,
+        submitted_at=submission.submitted_at,
+        completion_time_seconds=submission.completion_time_seconds,
+        form_version_id=submission.form_version_id,
+        values=[{"field_id":v.field_id,"field_label":v.field.label,"value":v.value} for v in values]
+    )
